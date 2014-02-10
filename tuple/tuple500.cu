@@ -42,9 +42,18 @@ void printArray(char *content, int *input) {
 	printf("\n");
 }
 
+void dummyCudaMalloc(int **dummy_ptr) {
+	cudaError_t cudaStatus = cudaMalloc((void**) dummy_ptr, sizeof(int));
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed!");
+	}
+}
+
 int main() {
 	int data[DATASIZE];
 	int result[DATASIZE] = { 0 };
+	int *dummy_ptr = 0;
+	dummyCudaMalloc(&dummy_ptr);
 	// Set false value in result array
 	memset(result, 0, DATASIZE);
     setInput(data);
@@ -60,6 +69,7 @@ int main() {
 	}
 	printArray("Result", result);
 
+	cudaFree(dummy_ptr);
     deviceReset();
 	return 0;
 }
