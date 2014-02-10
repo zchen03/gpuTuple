@@ -7,7 +7,7 @@
 #define DATASIZE 500
 #define CHUNKNUM 10
 
-cudaError_t square(int *result, int *data);
+cudaError_t square(int *result, int *data, int chunknum);
 
 __global__ void squareKernel(int *result, int *data) {
 	int i = threadIdx.x;
@@ -18,10 +18,11 @@ __global__ void squareKernel(int *result, int *data) {
 void deviceReset() {
 // cudaDeviceReset must be called before exiting in order for profiling and
 // tracing tools such as Parallel Nsight and Visual Profiler to show complete traces.
+	cudaError_t cudaStatus;
 	cudaStatus = cudaDeviceReset();
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaDeviceReset failed!");
-		return 1;
+		//return 1;
 	}
 
 }
@@ -60,7 +61,6 @@ int main() {
 	printArray("Result", result);
 
     deviceReset();
-	system("pause");
 	return 0;
 }
 
