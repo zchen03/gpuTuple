@@ -1,0 +1,114 @@
+#include "cuda_runtime.h"
+#include "device_launch_parameters.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#define DATASIZE 500
+cudaError_t square(int *result, int *data);
+__global__ void squareKernel(int *result, int *data) {
+	int i = threadIdx.x;
+	result[i] = 0;
+	result[i] = data[i] * data[i];
+}
+int main() {
+	int data[DATASIZE];
+	int result[DATASIZE] = { 0 };
+	// Set false value in result array
+	memset(result, 0, DATASIZE);
+	// Generate input data
+	int tmpindex = 0;
+	for (int i = 0; i < DATASIZE; i++) {
+		data[i] = tmpindex;
+		tmpindex++;
+	}
+	// Print the input character
+	printf("input  ");
+	for (int i = 0; i < DATASIZE; i++)
+		printf("i%d=%d, ", i, data[i]);
+	printf("\n");
+	// Search keyword in parallel.
+	printf("square\n");
+	cudaError_t cudaStatus = square(result, data);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "addWithCuda failed!");
+		return 1;
+	}
+	printf("result ");
+	// Print the result array
+	for (int i = 0; i < DATASIZE; i++)
+		printf("i%d=%d, ", i, result[i]);
+	printf("\n");
+
+// cudaDeviceReset must be called before exiting in order for profiling and
+// tracing tools such as Parallel Nsight and Visual Profiler to show complete traces.
+	cudaStatus = cudaDeviceReset();
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaDeviceReset failed!");
+		return 1;
+	}
+	system("pause");
+	return 0;
+
+}
+// Helper function for using CUDA to search a list of characters in parallel.
+cudaError_t square(int *result, int *data) {
+	int *dev_data = 0;
+	int *dev_result = 0;
+	cudaError_t cudaStatus;
+	// Choose which GPU to run on, change this on a multi-GPU system.
+	cudaStatus = cudaSetDevice(0);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr,
+				"cudaSetDevice failed! Do you have a CUDA-capable GPU installed?");
+		goto Error;
+	}
+
+// Launch a search keyword kernel on the GPU with one thread for each element.
+	for (int i = 0; i < DATASIZE; i++) {
+		// Allocate GPU buffers for result set.
+		cudaStatus = cudaMalloc((void**) &dev_result, 1 * sizeof(int));
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "cudaMalloc failed!");
+			goto Error;
+		}
+		// Allocate GPU buffers for data set.
+		cudaStatus = cudaMalloc((void**) &dev_data, 1 * sizeof(int));
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "cudaMalloc failed!");
+			goto Error;
+		}
+		// Copy input data from host memory to GPU buffers.
+		cudaStatus = cudaMemcpy(dev_data, data, 1 * sizeof(int),
+				cudaMemcpyHostToDevice);
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "cudaMemcpy failed!");
+			goto Error;
+		}
+
+		squareKernel<<<1, 1>>>(dev_result, dev_data);
+
+		// cudaDeviceSynchronize waits for the kernel to finish, and returns
+		// any errors encountered during the launch.
+		cudaStatus = cudaDeviceSynchronize();
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr,
+					"cudaDeviceSynchronize returned error code %d after launching addKernel!\n",
+					cudaStatus);
+			goto Error;
+		}
+		// Copy result from GPU buffer to host memory.
+		cudaStatus = cudaMemcpy(result, dev_result, 1 * sizeof(int),
+				cudaMemcpyDeviceToHost);
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "cudaMemcpy failed!");
+			goto Error;
+		}
+
+		cudaFree(dev_data);
+		dev_data++;
+		dev_result++;
+	}
+	Error: cudaFree(dev_result);
+	return cudaStatus;
+
+}
