@@ -3,42 +3,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #define DATASIZE 500
+#define CHUNKNUM 10
+
 cudaError_t square(int *result, int *data);
+
 __global__ void squareKernel(int *result, int *data) {
 	int i = threadIdx.x;
 	result[i] = 0;
 	result[i] = data[i] * data[i];
 }
-int main() {
-	int data[DATASIZE];
-	int result[DATASIZE] = { 0 };
-	// Set false value in result array
-	memset(result, 0, DATASIZE);
-	// Generate input data
-	int tmpindex = 0;
-	for (int i = 0; i < DATASIZE; i++) {
-		data[i] = tmpindex;
-		tmpindex++;
-	}
-	// Print the input character
-	printf("input  ");
-	for (int i = 0; i < DATASIZE; i++)
-		printf("i%d=%d, ", i, data[i]);
-	printf("\n");
-	// Search keyword in parallel.
-	printf("square\n");
-	cudaError_t cudaStatus = square(result, data);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "addWithCuda failed!");
-		return 1;
-	}
-	printf("result ");
-	// Print the result array
-	for (int i = 0; i < DATASIZE; i++)
-		printf("i%d=%d, ", i, result[i]);
-	printf("\n");
 
+void deviceReset() {
 // cudaDeviceReset must be called before exiting in order for profiling and
 // tracing tools such as Parallel Nsight and Visual Profiler to show complete traces.
 	cudaStatus = cudaDeviceReset();
@@ -46,12 +23,50 @@ int main() {
 		fprintf(stderr, "cudaDeviceReset failed!");
 		return 1;
 	}
-	system("pause");
-	return 0;
 
 }
+
+void setInput(int *data) {
+    // Generate input data
+	for (int i = 0; i < DATASIZE; i++) {
+		data[i] = i;
+	}
+}
+
+void printArray(char *content, int *input) {
+    printf("%s\n", content);
+	// Print the result array
+	for (int i = 0; i < DATASIZE; i++)
+		printf("i%d=%d, ", i, input[i]);
+	printf("\n");
+}
+
+int main() {
+	int data[DATASIZE];
+	int result[DATASIZE] = { 0 };
+	// Set false value in result array
+	memset(result, 0, DATASIZE);
+    setInput(data);
+    
+	// Print the input character
+	printArray("Input", data);
+	// Search keyword in parallel.
+	printf("square\n");
+	cudaError_t cudaStatus = square(result, data, CHUNKNUM);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "addWithCuda failed!");
+		return 1;
+	}
+	printArray("Result", result);
+
+    deviceReset();
+	system("pause");
+	return 0;
+}
+
+
 // Helper function for using CUDA to search a list of characters in parallel.
-cudaError_t square(int *result, int *data) {
+cudaError_t square(int *result, int *data, int num_kernel) {
 	int *dev_data = 0;
 	int *dev_result = 0;
 	cudaError_t cudaStatus;
@@ -64,28 +79,30 @@ cudaError_t square(int *result, int *data) {
 	}
 
 // Launch a search keyword kernel on the GPU with one thread for each element.
-	for (int i = 0; i < DATASIZE; i++) {
+	for (int i = 0; i < num_kernel; i++) {
+        int chunk_size = DATASIZE / num_kernel;
 		// Allocate GPU buffers for result set.
-		cudaStatus = cudaMalloc((void**) &dev_result, 1 * sizeof(int));
+		cudaStatus = cudaMalloc((void**) &dev_result, chunk_size * sizeof(int));
 		if (cudaStatus != cudaSuccess) {
 			fprintf(stderr, "cudaMalloc failed!");
 			goto Error;
 		}
 		// Allocate GPU buffers for data set.
-		cudaStatus = cudaMalloc((void**) &dev_data, 1 * sizeof(int));
+		cudaStatus = cudaMalloc((void**) &dev_data, chunk_size * sizeof(int));
 		if (cudaStatus != cudaSuccess) {
 			fprintf(stderr, "cudaMalloc failed!");
 			goto Error;
 		}
 		// Copy input data from host memory to GPU buffers.
-		cudaStatus = cudaMemcpy(dev_data, data, 1 * sizeof(int),
-				cudaMemcpyHostToDevice);
+		cudaStatus = cudaMemcpy(dev_data, data + i * chunk_size, 
+                                chunk_size * sizeof(int),
+                                cudaMemcpyHostToDevice);
 		if (cudaStatus != cudaSuccess) {
 			fprintf(stderr, "cudaMemcpy failed!");
 			goto Error;
 		}
 
-		squareKernel<<<1, 1>>>(dev_result, dev_data);
+		squareKernel<<<1, chunk_size>>>(dev_result, dev_data);
 
 		// cudaDeviceSynchronize waits for the kernel to finish, and returns
 		// any errors encountered during the launch.
@@ -97,16 +114,18 @@ cudaError_t square(int *result, int *data) {
 			goto Error;
 		}
 		// Copy result from GPU buffer to host memory.
-		cudaStatus = cudaMemcpy(result, dev_result, 1 * sizeof(int),
-				cudaMemcpyDeviceToHost);
+		cudaStatus = cudaMemcpy(result + i * chunk_size, 
+                                dev_result, chunk_size * sizeof(int),
+                                cudaMemcpyDeviceToHost);
 		if (cudaStatus != cudaSuccess) {
 			fprintf(stderr, "cudaMemcpy failed!");
 			goto Error;
 		}
 
 		cudaFree(dev_data);
-		dev_data++;
-		dev_result++;
+        cudaFree(dev_result);
+        dev_data = NULL;
+        dev_result = NULL;
 	}
 	Error: cudaFree(dev_result);
 	return cudaStatus;
