@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define DATASIZE 500
 #define CHUNKNUM 10
@@ -59,15 +60,20 @@ int main() {
     setInput(data);
     
 	// Print the input character
-	printArray("Input", data);
+	// printArray("Input", data);
 	// Search keyword in parallel.
 	printf("square\n");
+    clock_t t = clock();
 	cudaError_t cudaStatus = square(result, data, CHUNKNUM);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "addWithCuda failed!");
 		return 1;
 	}
-	printArray("Result", result);
+    t = clock() - t;
+    printf("Kernel time for %d kernel(s): %f miliseconds\n", 
+           CHUNKNUM, 
+           ((float)t) * 1000 / CLOCKS_PER_SEC);
+	// printArray("Result", result);
 
 	cudaFree(dummy_ptr);
     deviceReset();
